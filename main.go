@@ -4,10 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
 
-	"github.com/songgao/water"
 	"github.com/urfave/cli"
 )
 
@@ -16,39 +14,6 @@ const (
 
 	buffsize = 1500
 )
-
-func initClient() {
-	fmt.Println("开始初始化虚拟网卡...")
-	ifce, err := water.New(water.Config{
-		DeviceType: water.TAP,
-		PlatformSpecificParams: water.PlatformSpecificParams{
-			ComponentID: "tap0901",
-		},
-	})
-	if err != nil {
-		fmt.Printf("虚拟网卡初始化失败，发生错误:%v\n", err)
-		os.Exit(1)
-	}
-	defer func() {
-		err := ifce.Close()
-		if err != nil {
-			fmt.Printf("虚拟网卡关闭失败，发生错误:%v\n", err)
-		} else {
-			fmt.Printf("虚拟网卡关闭成功...")
-		}
-	}()
-	cmd := exec.Command("netsh", "interface", "ip", "set", "address", "name="+ifce.Name(), "source=static", "addr=10.1.0.10", "mask=255.255.255.0", "gateway=none")
-	err = cmd.Run()
-	if err != nil {
-		fmt.Printf("netsh命令执行发生错误：%v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println("虚拟网卡IP地址设置成功...")
-}
-
-func initServer() {
-
-}
 
 func main() {
 	app := cli.NewApp()
@@ -80,34 +45,50 @@ func main() {
 			Usage: "kcpn配置文件路径，默认为当前目录中的config.json文件",
 		},
 		cli.IntFlag{
-			Name:  "mtu",
-			Value: 1350,
-			Usage: "set maximum transmission unit for UDP packets",
-		},
-		cli.IntFlag{
-			Name:  "sndwnd",
-			Value: 1024,
-			Usage: "set send window size(num of packets)",
-		},
-		cli.IntFlag{
-			Name:  "rcvwnd",
-			Value: 1024,
-			Usage: "set receive window size(num of packets)",
-		},
-		cli.IntFlag{
-			Name:  "datashard",
-			Value: 10,
-			Usage: "set reed-solomon erasure coding - datashard",
-		},
-		cli.IntFlag{
-			Name:  "parityshard",
-			Value: 3,
-			Usage: "set reed-solomon erasure coding - parityshard",
-		},
-		cli.IntFlag{
-			Name:  "dscp",
+			Name:  "autoexpire",
 			Value: 0,
-			Usage: "set DSCP(6bit)",
+			Usage: "set auto expiration time(in seconds) for a single UDP connection, 0 to disable",
+		},
+		cli.IntFlag{
+			Name:  "scavengettl",
+			Value: 600,
+			Usage: "set how long an expired connection can live(in sec), -1 to disable",
+		},
+		cli.IntFlag{
+			Name:   "mtu",
+			Value:  1350,
+			Usage:  "set maximum transmission unit for UDP packets",
+			Hidden: true,
+		},
+		cli.IntFlag{
+			Name:   "sndwnd",
+			Value:  1024,
+			Usage:  "set send window size(num of packets)",
+			Hidden: true,
+		},
+		cli.IntFlag{
+			Name:   "rcvwnd",
+			Value:  1024,
+			Usage:  "set receive window size(num of packets)",
+			Hidden: true,
+		},
+		cli.IntFlag{
+			Name:   "datashard",
+			Value:  10,
+			Usage:  "set reed-solomon erasure coding - datashard",
+			Hidden: true,
+		},
+		cli.IntFlag{
+			Name:   "parityshard",
+			Value:  3,
+			Usage:  "set reed-solomon erasure coding - parityshard",
+			Hidden: true,
+		},
+		cli.IntFlag{
+			Name:   "dscp",
+			Value:  0,
+			Usage:  "set DSCP(6bit)",
+			Hidden: true,
 		},
 		cli.BoolFlag{
 			Name:   "acknodelay",
@@ -150,35 +131,52 @@ func main() {
 		config.Mode = "normal"
 		config.Crypt = "salsa20"
 		config.NoComp = true
-		config.Remote = c.String("remote")
-		config.Listen = c.String("listen")
-		config.MTU = c.Int("mtu")
-		config.SndWnd = c.Int("sndwnd")
-		config.RcvWnd = c.Int("rcvwnd")
-		config.DataShard = c.Int("datashard")
-		config.ParityShard = c.Int("parityshard")
-		config.DSCP = c.Int("dscp")
-		config.AckNodelay = c.Bool("acknodelay")
-		config.NoDelay = c.Int("nodelay")
-		config.Interval = c.Int("interval")
-		config.Resend = c.Int("resend")
-		config.NoCongestion = c.Int("nc")
-		config.SockBuf = c.Int("sockbuf")
-		config.KeepAlive = c.Int("keepalive")
-		err := parseJSONConfig(&config, c.String("config"))
+		config.Remote = ctx.String("remote")
+		config.Listen = ctx.String("listen")
+		config.AutoExpire = ctx.Int("autoexpire")
+		config.ScavengeTTL = ctx.Int("scavengettl")
+		config.MTU = ctx.Int("mtu")
+		config.SndWnd = ctx.Int("sndwnd")
+		config.RcvWnd = ctx.Int("rcvwnd")
+		config.DataShard = ctx.Int("datashard")
+		config.ParityShard = ctx.Int("parityshard")
+		config.DSCP = ctx.Int("dscp")
+		config.AckNodelay = ctx.Bool("acknodelay")
+		config.NoDelay = ctx.Int("nodelay")
+		config.Interval = ctx.Int("interval")
+		config.Resend = ctx.Int("resend")
+		config.NoCongestion = ctx.Int("nc")
+		config.SockBuf = ctx.Int("sockbuf")
+		config.KeepAlive = ctx.Int("keepalive")
+		//读取配置文件
+		err := parseJSONConfig(&config, ctx.String("config"))
 		if err != nil {
-			fmt.Printf("读取配置文件发生错误：%v, 将以默认配置运行...\n")
+			fmt.Printf("读取配置文件发生错误：%v, 将以默认配置运行...\n", err)
 		} else {
 			fmt.Printf("读取配置文件成功...\n")
 		}
+		switch config.Mode {
+		case "normal":
+			config.NoDelay, config.Interval, config.Resend, config.NoCongestion = 0, 30, 2, 1
+		case "fast":
+			config.NoDelay, config.Interval, config.Resend, config.NoCongestion = 0, 20, 2, 1
+		case "fast2":
+			config.NoDelay, config.Interval, config.Resend, config.NoCongestion = 1, 20, 2, 1
+		case "fast3":
+			config.NoDelay, config.Interval, config.Resend, config.NoCongestion = 1, 10, 2, 1
+		}
+		//判断运行模式
 		switch ctx.String("mode") {
 		case "server":
-			initServer()
+			c := &Client{}
+			c.Run()
 		case "client":
-			initClient()
+			s := &Server{}
+			s.Run()
 		default:
 			return errors.New("错误的运行模式, 运行模式只能是\"server\"或者\"client\"")
 		}
+		return nil
 	}
 	app.Run(os.Args)
 }

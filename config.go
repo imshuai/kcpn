@@ -10,7 +10,10 @@ type Config struct {
 	Listen       string `json:"listen"`
 	Remote       string `json:"remote"`
 	Crypt        string `json:"crypt"`
+	Conn         int    `json:"conn"`
 	Mode         string `json:"mode"`
+	AutoExpire   int    `json:"autoexpire"`
+	ScavengeTTL  int    `json:"scavengettl"`
 	MTU          int    `json:"mtu"`
 	SndWnd       int    `json:"sndwnd"`
 	RcvWnd       int    `json:"rcvwnd"`
