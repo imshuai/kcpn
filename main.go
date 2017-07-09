@@ -15,13 +15,6 @@ const (
 	version = "v0.0.1"
 
 	buffsize = 1500
-	mtu      = 1350
-)
-
-var (
-	mode     string
-	remoteIP string
-	localIP  string
 )
 
 func initClient() {
@@ -30,7 +23,6 @@ func initClient() {
 		DeviceType: water.TAP,
 		PlatformSpecificParams: water.PlatformSpecificParams{
 			ComponentID: "tap0901",
-			Network:     "10.1.0.10/24",
 		},
 	})
 	if err != nil {
@@ -155,16 +147,17 @@ func main() {
 	}
 	app.Action = func(ctx *cli.Context) error {
 		config := Config{}
+		config.Mode = "normal"
+		config.Crypt = "salsa20"
+		config.NoComp = true
+		config.Remote = c.String("remote")
 		config.Listen = c.String("listen")
-		config.Crypt = c.String("crypt")
-		config.Mode = c.String("mode")
 		config.MTU = c.Int("mtu")
 		config.SndWnd = c.Int("sndwnd")
 		config.RcvWnd = c.Int("rcvwnd")
 		config.DataShard = c.Int("datashard")
 		config.ParityShard = c.Int("parityshard")
 		config.DSCP = c.Int("dscp")
-		config.NoComp = c.Bool("nocomp")
 		config.AckNodelay = c.Bool("acknodelay")
 		config.NoDelay = c.Int("nodelay")
 		config.Interval = c.Int("interval")
@@ -172,6 +165,12 @@ func main() {
 		config.NoCongestion = c.Int("nc")
 		config.SockBuf = c.Int("sockbuf")
 		config.KeepAlive = c.Int("keepalive")
+		err := parseJSONConfig(&config, c.String("config"))
+		if err != nil {
+			fmt.Printf("读取配置文件发生错误：%v, 将以默认配置运行...\n")
+		} else {
+			fmt.Printf("读取配置文件成功...\n")
+		}
 		switch ctx.String("mode") {
 		case "server":
 			initServer()
