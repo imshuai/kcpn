@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -118,7 +117,7 @@ func runCMD(args ...string) error {
 }
 
 func (s *Server) initVirtualAdapter() error {
-	fmt.Println("开始初始化虚拟网卡...")
+	fmt.Println("initializing virtual adapter...")
 	ifce, err := water.New(water.Config{
 		DeviceType: water.TAP,
 		PlatformSpecificParams: water.PlatformSpecificParams{
@@ -126,7 +125,7 @@ func (s *Server) initVirtualAdapter() error {
 		},
 	})
 	if err != nil {
-		fmt.Printf("虚拟网卡初始化失败，发生错误:%v\n", err)
+		fmt.Printf("virtual adapter initialize fail with error:%v\n", err)
 		return err
 	}
 	//	defer func() {
@@ -140,15 +139,15 @@ func (s *Server) initVirtualAdapter() error {
 
 	err = runCMD("addr", "add", "173.10.10.1/24", "dev", ifce.Name())
 	if err != nil {
-		fmt.Printf("设置虚拟网卡IP命令执行发生错误：%v\n", err)
+		fmt.Printf("setting virtual adapter parameters fail with error:%v\n", err)
 		return err
 	}
 	err = runCMD("link", "set", "dev", ifce.Name(), "up")
 	if err != nil {
-		fmt.Printf("设置虚拟网卡IP命令执行发生错误：%v\n", err)
+		fmt.Printf("setting virtual adapter parameters fail with error:%v\n", err)
 		return err
 	}
-	fmt.Println("虚拟网卡IP地址设置成功...")
+	fmt.Println("set ip address to virtual adapter success...")
 	s.ifce = ifce
 	return nil
 }
@@ -191,35 +190,35 @@ func (s *Server) Run() {
 	}
 	lis, err := kcp.ListenWithOptions(s.cfg.Listen, block, s.cfg.DataShard, s.cfg.ParityShard)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Listen and serve on udp://%s fail with error:%v\n", s.cfg.Listen, err)
 		os.Exit(1)
 	}
+	fmt.Printf("listening on udp://%s success\n", s.cfg.Listen)
 	if err := lis.SetDSCP(s.cfg.DSCP); err != nil {
-		log.Println("SetDSCP:", err)
+		fmt.Printf("SetDSCP fail with error:%v\n", err)
 	}
 	if err := lis.SetReadBuffer(s.cfg.SockBuf); err != nil {
-		log.Println("SetReadBuffer:", err)
+		fmt.Printf("SetReadBuffer fail with error:%v\n", err)
 	}
 	if err := lis.SetWriteBuffer(s.cfg.SockBuf); err != nil {
-		log.Println("SetWriteBuffer:", err)
+		fmt.Printf("SetWriteBuffer fail with error:%v\n", err)
 	}
 	for {
 		if conn, err := lis.AcceptKCP(); err == nil {
-			log.Println("remote address:", conn.RemoteAddr())
+			go fmt.Printf("new connection from remote address:%v\n", conn.RemoteAddr())
 			conn.SetStreamMode(true)
 			conn.SetWriteDelay(true)
 			conn.SetNoDelay(s.cfg.NoDelay, s.cfg.Interval, s.cfg.Resend, s.cfg.NoCongestion)
 			conn.SetMtu(s.cfg.MTU)
 			conn.SetWindowSize(s.cfg.SndWnd, s.cfg.RcvWnd)
 			conn.SetACKNoDelay(s.cfg.AckNodelay)
-
 			if s.cfg.NoComp {
 				go handleMux(conn, s)
 			} else {
 				go handleMux(newCompStream(conn), s)
 			}
 		} else {
-			log.Printf("%+v", err)
+			fmt.Printf("accept new kcp connection fail with error:%+v\n", err)
 		}
 	}
 }
@@ -258,17 +257,16 @@ func handleMux(conn io.ReadWriteCloser, s *Server) {
 	smuxConfig := smux.DefaultConfig()
 	smuxConfig.MaxReceiveBuffer = s.cfg.SockBuf
 	smuxConfig.KeepAliveInterval = time.Duration(s.cfg.KeepAlive) * time.Second
-
 	mux, err := smux.Server(conn, smuxConfig)
 	if err != nil {
-		log.Println(err)
+		fmt.Printf("generate new stream multiplex server fail with error:%v\n", err)
 		return
 	}
 	defer mux.Close()
 	for {
 		p1, err := mux.AcceptStream()
 		if err != nil {
-			log.Println(err)
+			fmt.Printf("accept new stream from mux fail with error:%v\n", err)
 			return
 		}
 		go handleClient(p1, s.ifce)
@@ -276,17 +274,23 @@ func handleMux(conn io.ReadWriteCloser, s *Server) {
 }
 
 func handleClient(p1, p2 io.ReadWriteCloser) {
-	log.Println("stream opened")
-	defer log.Println("stream closed")
+	go fmt.Println("stream opened")
+	defer fmt.Println("stream closed")
 	defer p1.Close()
 	//	defer p2.Close()
 
 	// start tunnel
 	p1die := make(chan struct{})
-	go func() { io.Copy(p1, p2); close(p1die) }()
+	go func() {
+		io.Copy(p1, p2)
+		close(p1die)
+	}()
 
 	p2die := make(chan struct{})
-	go func() { io.Copy(p2, p1); close(p2die) }()
+	go func() {
+		io.Copy(p2, p1)
+		close(p2die)
+	}()
 
 	// wait for tunnel termination
 	select {

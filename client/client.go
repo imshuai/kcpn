@@ -90,6 +90,8 @@ func (c *Client) initVirtualAdapter() error {
 	//		return err
 	//	}
 	cmd := exec.Command("netsh", "interface", "ip", "set", "address", "name="+ifce.Name(), "source=static", "addr=173.10.10.2", "mask=255.255.255.0", "gateway=none")
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 	err = cmd.Run()
 	if err != nil {
 		fmt.Printf("设置虚拟网卡IP命令执行发生错误：%v\n", err)
@@ -225,15 +227,21 @@ func handleClient(sess *smux.Session, p1 io.ReadWriteCloser) {
 		return
 	}
 
-	log.Println("stream opened")
+	go log.Println("stream opened")
 	defer log.Println("stream closed")
 	defer p2.Close()
 
 	// start tunnel
 	p2die := make(chan struct{})
-	go func() { io.Copy(p2, p1); close(p2die) }()
+	go func() {
+		io.Copy(p2, p1)
+		close(p2die)
+	}()
 	p1die := make(chan struct{})
-	go func() { io.Copy(p1, p2); close(p1die) }()
+	go func() {
+		io.Copy(p1, p2)
+		close(p1die)
+	}()
 
 	// wait for tunnel termination
 	select {
