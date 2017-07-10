@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"os"
 	"os/exec"
 	"time"
 
@@ -76,32 +77,36 @@ func (c *Client) initVirtualAdapter() error {
 		fmt.Printf("虚拟网卡初始化失败，发生错误:%v\n", err)
 		return err
 	}
-	defer func() {
-		err := ifce.Close()
-		if err != nil {
-			fmt.Printf("虚拟网卡关闭失败，发生错误:%v\n", err)
-		} else {
-			fmt.Printf("虚拟网卡关闭成功...")
-		}
-	}()
-	err = c.RequestLocalIP()
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command("netsh", "interface", "ip", "set", "address", "name="+ifce.Name(), "source=static", "addr="+c.localIP.String(), "mask=255.255.255.0", "gateway=none")
+	//	defer func() {
+	//		err := ifce.Close()
+	//		if err != nil {
+	//			fmt.Printf("虚拟网卡关闭失败，发生错误:%v\n", err)
+	//		} else {
+	//			fmt.Printf("虚拟网卡关闭成功...")
+	//		}
+	//	}()
+	//	err = c.RequestLocalIP()
+	//	if err != nil {
+	//		return err
+	//	}
+	cmd := exec.Command("netsh", "interface", "ip", "set", "address", "name="+ifce.Name(), "source=static", "addr=173.10.10.2", "mask=255.255.255.0", "gateway=none")
 	err = cmd.Run()
 	if err != nil {
 		fmt.Printf("设置虚拟网卡IP命令执行发生错误：%v\n", err)
 		return err
 	}
 	fmt.Println("虚拟网卡IP地址设置成功...")
+	c.ifce = ifce
 	return nil
 }
 
 //Run 开始执行
 func (c *Client) Run() {
 	rand.Seed(int64(time.Now().Nanosecond()))
-	c.initVirtualAdapter()
+	err := c.initVirtualAdapter()
+	if err != nil {
+		os.Exit(1)
+	}
 	pass := pbkdf2.Key([]byte("kcpn-"+version), []byte("im帥"), 4096, 32, sha1.New)
 	var block kcp.BlockCrypt
 	switch c.cfg.Crypt {
@@ -135,7 +140,7 @@ func (c *Client) Run() {
 	smuxConfig.MaxReceiveBuffer = c.cfg.SockBuf
 
 	createConn := func() (*smux.Session, error) {
-		kcpconn, err := kcp.DialWithOptions(c.cfg.Remote+":2342", block, c.cfg.DataShard, c.cfg.ParityShard)
+		kcpconn, err := kcp.DialWithOptions(c.cfg.Remote, block, c.cfg.DataShard, c.cfg.ParityShard)
 		if err != nil {
 			return nil, errors.New("连接至远程服务器失败，发生错误：" + err.Error())
 		}
@@ -154,8 +159,8 @@ func (c *Client) Run() {
 		if err := kcpconn.SetWriteBuffer(c.cfg.SockBuf); err != nil {
 			log.Println("SetWriteBuffer:", err)
 		}
+		//return kcpconn, nil
 
-		// stream multiplex
 		var session *smux.Session
 		if c.cfg.NoComp {
 			session, err = smux.Client(kcpconn, smuxConfig)
@@ -167,6 +172,8 @@ func (c *Client) Run() {
 		}
 		return session, nil
 	}
+
+	//handleClient(conn, c.ifce)
 
 	// wait until a connection is ready
 	waitConn := func() *smux.Session {
@@ -223,11 +230,10 @@ func handleClient(sess *smux.Session, p1 io.ReadWriteCloser) {
 	defer p2.Close()
 
 	// start tunnel
-	p1die := make(chan struct{})
-	go func() { io.Copy(p1, p2); close(p1die) }()
-
 	p2die := make(chan struct{})
 	go func() { io.Copy(p2, p1); close(p2die) }()
+	p1die := make(chan struct{})
+	go func() { io.Copy(p1, p2); close(p1die) }()
 
 	// wait for tunnel termination
 	select {
