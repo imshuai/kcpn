@@ -36,25 +36,25 @@ func main() {
 	}
 	app.Action = func(ctx *cli.Context) error {
 		config := Config{}
-		config.Mode = "normal"
+		config.Mode = "fast2"
 		config.Crypt = "salsa20"
-		config.NoComp = true
+		//config.NoComp = true
 		config.Listen = ctx.String("listen")
-		config.AutoExpire = 0
-		config.ScavengeTTL = 600
-		config.MTU = 1350
+		//config.AutoExpire = 0
+		//config.ScavengeTTL = 600
+		config.MTU = 1500
 		config.SndWnd = 1024
 		config.RcvWnd = 1024
 		config.DataShard = 10
 		config.ParityShard = 3
-		config.DSCP = 0
+		config.DSCP = 46
 		config.AckNodelay = false
 		config.NoDelay = 0
 		config.Interval = 40
 		config.Resend = 0
 		config.NoCongestion = 0
 		config.SockBuf = 4194304
-		config.KeepAlive = 10
+		//config.KeepAlive = 10
 		//读取配置文件
 		err := parseJSONConfig(&config, ctx.String("config"))
 		if err != nil {

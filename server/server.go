@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -13,12 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/pbkdf2"
-
-	"github.com/golang/snappy"
+	"github.com/songgao/packets/ethernet"
 	"github.com/songgao/water"
 	"github.com/xtaci/kcp-go"
-	"github.com/xtaci/smux"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 //Server 定义服务器类
@@ -212,66 +211,66 @@ func (s *Server) Run() {
 			conn.SetMtu(s.cfg.MTU)
 			conn.SetWindowSize(s.cfg.SndWnd, s.cfg.RcvWnd)
 			conn.SetACKNoDelay(s.cfg.AckNodelay)
-			if s.cfg.NoComp {
-				go handleMux(conn, s)
-			} else {
-				go handleMux(newCompStream(conn), s)
-			}
+			//			if s.cfg.NoComp {
+			go handleClient(conn, s.ifce)
+			//			} else {
+			//				go handleMux(newCompStream(conn), s)
+			//			}
 		} else {
 			fmt.Printf("accept new kcp connection fail with error:%+v\n", err)
 		}
 	}
 }
 
-type compStream struct {
-	conn net.Conn
-	w    *snappy.Writer
-	r    *snappy.Reader
-}
+//type compStream struct {
+//	conn net.Conn
+//	w    *snappy.Writer
+//	r    *snappy.Reader
+//}
 
-func (c *compStream) Read(p []byte) (n int, err error) {
-	return c.r.Read(p)
-}
+//func (c *compStream) Read(p []byte) (n int, err error) {
+//	return c.r.Read(p)
+//}
 
-func (c *compStream) Write(p []byte) (n int, err error) {
-	n, err = c.w.Write(p)
-	err = c.w.Flush()
-	return n, err
-}
+//func (c *compStream) Write(p []byte) (n int, err error) {
+//	n, err = c.w.Write(p)
+//	err = c.w.Flush()
+//	return n, err
+//}
 
-func (c *compStream) Close() error {
-	return c.conn.Close()
-}
+//func (c *compStream) Close() error {
+//	return c.conn.Close()
+//}
 
-func newCompStream(conn net.Conn) *compStream {
-	c := new(compStream)
-	c.conn = conn
-	c.w = snappy.NewBufferedWriter(conn)
-	c.r = snappy.NewReader(conn)
-	return c
-}
+//func newCompStream(conn net.Conn) *compStream {
+//	c := new(compStream)
+//	c.conn = conn
+//	c.w = snappy.NewBufferedWriter(conn)
+//	c.r = snappy.NewReader(conn)
+//	return c
+//}
 
 // handle multiplex-ed connection
-func handleMux(conn io.ReadWriteCloser, s *Server) {
-	// stream multiplex
-	smuxConfig := smux.DefaultConfig()
-	smuxConfig.MaxReceiveBuffer = s.cfg.SockBuf
-	smuxConfig.KeepAliveInterval = time.Duration(s.cfg.KeepAlive) * time.Second
-	mux, err := smux.Server(conn, smuxConfig)
-	if err != nil {
-		fmt.Printf("generate new stream multiplex server fail with error:%v\n", err)
-		return
-	}
-	defer mux.Close()
-	for {
-		p1, err := mux.AcceptStream()
-		if err != nil {
-			fmt.Printf("accept new stream from mux fail with error:%v\n", err)
-			return
-		}
-		go handleClient(p1, s.ifce)
-	}
-}
+//func handleMux(conn io.ReadWriteCloser, s *Server) {
+//	// stream multiplex
+//	smuxConfig := smux.DefaultConfig()
+//	smuxConfig.MaxReceiveBuffer = s.cfg.SockBuf
+//	smuxConfig.KeepAliveInterval = time.Duration(s.cfg.KeepAlive) * time.Second
+//	mux, err := smux.Server(conn, smuxConfig)
+//	if err != nil {
+//		fmt.Printf("generate new stream multiplex server fail with error:%v\n", err)
+//		return
+//	}
+//	defer mux.Close()
+//	for {
+//		p1, err := mux.AcceptStream()
+//		if err != nil {
+//			fmt.Printf("accept new stream from mux fail with error:%v\n", err)
+//			return
+//		}
+//		go handleClient(p1, s.ifce)
+//	}
+//}
 
 func handleClient(p1, p2 io.ReadWriteCloser) {
 	go fmt.Println("stream opened")
@@ -282,7 +281,9 @@ func handleClient(p1, p2 io.ReadWriteCloser) {
 	// start tunnel
 	p1die := make(chan struct{})
 	go func() {
+
 		io.Copy(p1, p2)
+
 		close(p1die)
 	}()
 

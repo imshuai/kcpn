@@ -36,13 +36,13 @@ func main() {
 	}
 	app.Action = func(ctx *cli.Context) error {
 		config := Config{}
-		config.Mode = "normal"
+		config.Mode = "fast2"
 		config.Crypt = "salsa20"
-		config.Conn = 1
-		config.NoComp = true
+		//config.Conn = 1
+		//config.NoComp = true
 		config.Remote = ctx.String("remote")
-		config.AutoExpire = 0
-		config.ScavengeTTL = 600
+		//config.AutoExpire = 0
+		//config.ScavengeTTL = 600
 		config.MTU = 1350
 		config.SndWnd = 256
 		config.RcvWnd = 512
@@ -55,7 +55,7 @@ func main() {
 		config.Resend = 0
 		config.NoCongestion = 0
 		config.SockBuf = 4194304
-		config.KeepAlive = 10
+		//config.KeepAlive = 10
 
 		//读取配置文件
 		err := parseJSONConfig(&config, ctx.String("config"))

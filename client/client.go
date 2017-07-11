@@ -12,12 +12,9 @@ import (
 	"os/exec"
 	"time"
 
-	"golang.org/x/crypto/pbkdf2"
-
-	"github.com/golang/snappy"
 	"github.com/songgao/water"
 	kcp "github.com/xtaci/kcp-go"
-	"github.com/xtaci/smux"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 //Client 定义客户端类
@@ -138,10 +135,11 @@ func (c *Client) Run() {
 		c.cfg.Crypt = "aes"
 		block, _ = kcp.NewAESBlockCrypt(pass)
 	}
-	smuxConfig := smux.DefaultConfig()
-	smuxConfig.MaxReceiveBuffer = c.cfg.SockBuf
+	//smuxConfig := smux.DefaultConfig()
+	//smuxConfig.MaxReceiveBuffer = c.cfg.SockBuf
 
-	createConn := func() (*smux.Session, error) {
+	//createConn := func() (*smux.Session, error) {
+	createConn := func() (*kcp.UDPSession, error) {
 		kcpconn, err := kcp.DialWithOptions(c.cfg.Remote, block, c.cfg.DataShard, c.cfg.ParityShard)
 		if err != nil {
 			return nil, errors.New("连接至远程服务器失败，发生错误：" + err.Error())
@@ -161,24 +159,25 @@ func (c *Client) Run() {
 		if err := kcpconn.SetWriteBuffer(c.cfg.SockBuf); err != nil {
 			log.Println("SetWriteBuffer:", err)
 		}
-		//return kcpconn, nil
+		return kcpconn, nil
 
-		var session *smux.Session
-		if c.cfg.NoComp {
-			session, err = smux.Client(kcpconn, smuxConfig)
-		} else {
-			session, err = smux.Client(newCompStream(kcpconn), smuxConfig)
-		}
-		if err != nil {
-			return nil, errors.New("建立会话失败，发生错误：" + err.Error())
-		}
-		return session, nil
+		//		var session *smux.Session
+		//		if c.cfg.NoComp {
+		//			session, err = smux.Client(kcpconn, smuxConfig)
+		//		} else {
+		//			session, err = smux.Client(newCompStream(kcpconn), smuxConfig)
+		//		}
+		//		if err != nil {
+		//			return nil, errors.New("建立会话失败，发生错误：" + err.Error())
+		//		}
+		//		return session, nil
 	}
 
 	//handleClient(conn, c.ifce)
 
 	// wait until a connection is ready
-	waitConn := func() *smux.Session {
+	//waitConn := func() *smux.Session {
+	waitConn := func() *kcp.UDPSession {
 		for {
 			if session, err := createConn(); err == nil {
 				return session
@@ -187,45 +186,46 @@ func (c *Client) Run() {
 		}
 	}
 
-	numconn := uint16(c.cfg.Conn)
-	muxes := make([]struct {
-		session *smux.Session
-		ttl     time.Time
-	}, numconn)
+	//	numconn := uint16(c.cfg.Conn)
+	//	muxes := make([]struct {
+	//		session *smux.Session
+	//		ttl     time.Time
+	//	}, numconn)
 
-	for k := range muxes {
-		sess, err := createConn()
-		if err != nil {
-			return
-		}
-		muxes[k].session = sess
-		muxes[k].ttl = time.Now().Add(time.Duration(c.cfg.AutoExpire) * time.Second)
-	}
+	//	for k := range muxes {
+	//		sess, err := createConn()
+	//		if err != nil {
+	//			return
+	//		}
+	//		muxes[k].session = sess
+	//		muxes[k].ttl = time.Now().Add(time.Duration(c.cfg.AutoExpire) * time.Second)
+	//	}
 
-	chScavenger := make(chan *smux.Session, 128)
-	go scavenger(chScavenger)
-	rr := uint16(0)
+	//	chScavenger := make(chan *smux.Session, 128)
+	//	go scavenger(chScavenger)
+	//	rr := uint16(0)
 	for {
 
-		idx := rr % numconn
+		//		idx := rr % numconn
 
-		// do auto expiration && reconnection
-		if muxes[idx].session.IsClosed() || (c.cfg.AutoExpire > 0 && time.Now().After(muxes[idx].ttl)) {
-			chScavenger <- muxes[idx].session
-			muxes[idx].session = waitConn()
-			muxes[idx].ttl = time.Now().Add(time.Duration(c.cfg.AutoExpire) * time.Second)
-		}
-
-		handleClient(muxes[idx].session, c.ifce)
-		rr++
+		//		// do auto expiration && reconnection
+		//		if muxes[idx].session.IsClosed() || (c.cfg.AutoExpire > 0 && time.Now().After(muxes[idx].ttl)) {
+		//			chScavenger <- muxes[idx].session
+		//			muxes[idx].session = waitConn()
+		//			muxes[idx].ttl = time.Now().Add(time.Duration(c.cfg.AutoExpire) * time.Second)
+		//		}
+		session := waitConn()
+		handleClient(session, c.ifce)
+		//		rr++
 	}
 }
 
-func handleClient(sess *smux.Session, p1 io.ReadWriteCloser) {
-	p2, err := sess.OpenStream()
-	if err != nil {
-		return
-	}
+//func handleClient(sess *smux.Session, p1 io.ReadWriteCloser) {
+func handleClient(p2 *kcp.UDPSession, p1 io.ReadWriteCloser) {
+	//	p2, err := sess.OpenStream()
+	//	if err != nil {
+	//		return
+	//	}
 
 	go log.Println("stream opened")
 	defer log.Println("stream closed")
@@ -250,63 +250,63 @@ func handleClient(sess *smux.Session, p1 io.ReadWriteCloser) {
 	}
 }
 
-type compStream struct {
-	conn net.Conn
-	w    *snappy.Writer
-	r    *snappy.Reader
-}
+//type compStream struct {
+//	conn net.Conn
+//	w    *snappy.Writer
+//	r    *snappy.Reader
+//}
 
-func (c *compStream) Read(p []byte) (n int, err error) {
-	return c.r.Read(p)
-}
+//func (c *compStream) Read(p []byte) (n int, err error) {
+//	return c.r.Read(p)
+//}
 
-func (c *compStream) Write(p []byte) (n int, err error) {
-	n, err = c.w.Write(p)
-	err = c.w.Flush()
-	return n, err
-}
+//func (c *compStream) Write(p []byte) (n int, err error) {
+//	n, err = c.w.Write(p)
+//	err = c.w.Flush()
+//	return n, err
+//}
 
-func (c *compStream) Close() error {
-	return c.conn.Close()
-}
+//func (c *compStream) Close() error {
+//	return c.conn.Close()
+//}
 
-func newCompStream(conn net.Conn) *compStream {
-	c := new(compStream)
-	c.conn = conn
-	c.w = snappy.NewBufferedWriter(conn)
-	c.r = snappy.NewReader(conn)
-	return c
-}
+//func newCompStream(conn net.Conn) *compStream {
+//	c := new(compStream)
+//	c.conn = conn
+//	c.w = snappy.NewBufferedWriter(conn)
+//	c.r = snappy.NewReader(conn)
+//	return c
+//}
 
-type scavengeSession struct {
-	session *smux.Session
-	ttl     time.Time
-}
+//type scavengeSession struct {
+//	session *smux.Session
+//	ttl     time.Time
+//}
 
-const (
-	maxScavengeTTL = 10 * time.Minute
-)
+//const (
+//	maxScavengeTTL = 10 * time.Minute
+//)
 
-func scavenger(ch chan *smux.Session) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-	var sessionList []scavengeSession
-	for {
-		select {
-		case sess := <-ch:
-			sessionList = append(sessionList, scavengeSession{sess, time.Now()})
-		case <-ticker.C:
-			var newList []scavengeSession
-			for k := range sessionList {
-				s := sessionList[k]
-				if s.session.NumStreams() == 0 || s.session.IsClosed() || time.Since(s.ttl) > maxScavengeTTL {
-					log.Println("session scavenged")
-					s.session.Close()
-				} else {
-					newList = append(newList, sessionList[k])
-				}
-			}
-			sessionList = newList
-		}
-	}
-}
+//func scavenger(ch chan *smux.Session) {
+//	ticker := time.NewTicker(30 * time.Second)
+//	defer ticker.Stop()
+//	var sessionList []scavengeSession
+//	for {
+//		select {
+//		case sess := <-ch:
+//			sessionList = append(sessionList, scavengeSession{sess, time.Now()})
+//		case <-ticker.C:
+//			var newList []scavengeSession
+//			for k := range sessionList {
+//				s := sessionList[k]
+//				if s.session.NumStreams() == 0 || s.session.IsClosed() || time.Since(s.ttl) > maxScavengeTTL {
+//					log.Println("session scavenged")
+//					s.session.Close()
+//				} else {
+//					newList = append(newList, sessionList[k])
+//				}
+//			}
+//			sessionList = newList
+//		}
+//	}
+//}
